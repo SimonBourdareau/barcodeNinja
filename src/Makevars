@@ -1,0 +1,2 @@
+PKG_CXXFLAGS = -std=c++17
+PKG_LIBS = -lstdc++fs

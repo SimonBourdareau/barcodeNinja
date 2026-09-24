@@ -1,0 +1,30 @@
+# --- build outputs -----------------------------------------------------------
+# Per-backend object and dependency files (build/C, build/R)
+build/
+
+# The compiled binary
+/barcodeNinja
+
+# Legacy in-tree objects from before the build/ split
+*.o
+*.d
+
+# --- bundled R runtime -------------------------------------------------------
+# make BACKEND=R copies libR, its dependencies and the whole R installation
+# into ./lib. Several hundred MB, entirely reproducible from the build.
+lib/
+
+# --- run outputs -------------------------------------------------------------
+test_output/
+*.fastq.gz
+*_barcodeNinja_statistics.tsv
+*_barcodeNinja_statistics.rds
+barcodeNinja_statistics.tsv
+barcodeNinja_statistics.rds
+
+# --- editor and OS noise -----------------------------------------------------
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/
