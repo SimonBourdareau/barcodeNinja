@@ -575,9 +575,13 @@ This code is for non-commercial / academic research only.
 
 barcodeNinja uses software original develop by others:
 robin_hood.h is sourced from https://github.com/martinus/robin-hood-hashing/tree/master
+
 cxxopts.hpp is sourced from https://github.com/jarro2783/cxxopts/tree/master
+
 Both are version-fixed in barcodeNinja for stability of the code
 
-gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream thanks to Claude. It have been re-written in Modern C++17, it is fully RAII-safe and thread-safe.
+gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream thanks to Claude! It have been re-written in Modern C++17, it is fully RAII-safe and thread-safe.
+
+Disclaimer: Claude code was use to strengthened the code and test recursions. 
 
 *Copyright (c) 2026 Stowers Institute for Medical Research*
