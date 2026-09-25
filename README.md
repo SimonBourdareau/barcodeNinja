@@ -4,13 +4,14 @@ Flexible demultiplexing of combinatorial barcodes in FASTQ files.
 
 
 Simon Bourdareau, PhD
+
 Zeitlinger Lab, Stowers Institute for Medical Research.
 
 ---
 
-## What it is for
+## Purpose
 
-Standard demultiplexers assume barcodes live in the index reads, or at the very start of read 1. barcodeNinja assumes nothing: you describe where the barcodes are with a small design language, and it extracts, matches, counts, trims and splits accordingly.
+Standard demultiplexers assume barcodes live in the index reads, or at the very start of read 1. barcodeNinja does not have a fixed layout: you describe where the barcodes are with a small design language, and it extracts, matches, counts, trims and splits accordingly.
 
 It is the right tool when your barcodes are **at known offsets** inside reads or index files, and the structure is **combinatorial** enough that `bcl-convert` or a fixed-layout demultiplexer cannot express it.
 
@@ -20,11 +21,12 @@ A single read can carry a PCR handle you want ignored, a fixed barcode with seve
 14X|GATC*ATGC*TTTT|8I|10L
 ```
 
+barcodeNinja is also able to deduplicate reads based on sequence-content only.
 It is probably **not** the right tool if you need position-aware deduplication (use Picard or umi_tools after alignment), cell calling and UMI error correction (use Cell Ranger), or long-read barcode detection (barcodes must be at fixed offsets).
 
 ---
 
-## Building
+## Building from source
 
 Two backends. Both produce the same FASTQ output; they differ only in whether statistics can be written to an RDS file.
 
@@ -63,6 +65,8 @@ conda deactivate
 
 `make BACKEND=R` bundles libR and the R runtime into `./lib`, so the resulting binary runs on nodes that have no R installed — which is why `conda deactivate` before running it is safe.
 
+NOTE: Erasing the build including the ./lib will break the program. libR is dynamically associated with barcodeNinja when you run the software instead of being compile and embedded entierely in the main program.
+
 ### Notes
 
 Always `make clean` when switching backends. Object files live in `build/C/` and `build/R/`, so the two can coexist, but a stale binary at the top level will not be rebuilt otherwise.
@@ -88,16 +92,25 @@ pure C++, no embedded R
 
 Simplest useful case — an 8 bp sample barcode in the index file, matched against a lookup table, output split per sample:
 
-```bash
-barcodeNinja \
-  -i run_I1.fastq.gz -1 "8L" \
-  -r run_R1.fastq.gz \
+<pre><code>barcodeNinja \
+  -i file_I1.fastq.gz -1 "8L" \
+  -r file_R1.fastq.gz \
   -l barcodes.tsv \
   -d "bcIndex1-t1" \
-  -o results -p expt1
-```
+  -o results -p <span style="color:#d73a49">expt1</span>
+</code></pre>
 
-This produces `results/expt1_<BARCODE>_R1_demultiplexed.fastq.gz`, one file per barcode found, plus reads whose barcode matched nothing under the name `Un`.
+OR
+
+<pre><code>barcodeNinja \
+  --index1File file_I1.fastq.gz --bcIndex1 "8L" \
+  --read1File file_R1.fastq.gz \
+  --bclookupFilePath barcodes.tsv \
+  --outputDemultiplexingOn "bcIndex1-t1" \
+  --outputDir results --outputPrefix <span style="color:#d73a49">expt1</span>
+</code></pre>
+
+This produces <code>results/<span style="color:#d73a49">expt1</span>_&lt;BARCODE&gt;_R1_demultiplexed.fastq.gz</code>, one file per barcode found, plus reads whose barcode matched nothing under the name <code>Un</code>.
 
 ---
 
@@ -109,36 +122,36 @@ There are four token types.
 
 ### `<n>L` — lookup
 
-`8L` takes 8 bases and matches them against the lookup table supplied with `-l`. The assigned name goes into the read header.
+`nL` takes **n** bases and matches them against the lookup table supplied with `-l`. The assigned name goes into the read header.
 
 Requires `-l`. barcodeNinja refuses to start if a design contains `L` and no lookup file is given.
 
 ### `<n>I` — include
 
-`8I` takes 8 bases and accepts any sequence. Used for UMIs and random barcodes.
+`nI` takes **n** bases and accepts any sequence. Used for UMIs and random barcodes.
 
 By default each distinct sequence is assigned a numeric ID (`ID1`, `ID2`, …). With `-u` the literal sequence is reported instead, which is what you normally want for a UMI you intend to use downstream.
 
 ### `<n>X` — exclude
 
-`14X` takes 14 bases and discards them. The bases are consumed positionally — subsequent tokens start after them — but nothing is reported and no counter is created. Use this for PCR handles, spacers, and invariant sequence.
+`nX` takes **n** bases and discards them. The bases are consumed positionally — subsequent tokens start after them — but nothing is reported and no counter is created. Use this for PCR handles, spacers, and invariant sequence.
 
 ### Literal sequence — fixed barcode
 
-`GATC` takes 4 bases and requires them to match. IUPAC ambiguity codes are supported: `GRTC` matches both `GATC` and `GGTC`.
+`GATC` takes 4 bases and requires them to match. IUPAC ambiguity codes are supported: `GRTC` matches both `GATC` and `GGTC`. Sequences can be of any length but all alternatives must be the same length. 
 
 Several accepted variants are separated by `*`:
 
 ```
-GATC*ATGC*TTTT
+GATC*ATGC*CATC
 ```
 
-All alternatives must be the same length. Reads that match none of them are flagged; with `-f` they are written to `*_rejected.fastq.gz` instead of the normal output.
+Reads that match none of them are flagged; with `-f` they are written to `*_rejected.fastq.gz` instead of the normal output.
 
 ### Putting it together
 
 ```
-14X|GATC*ATGC*TTTT|8I|10L
+14X|GATC*ATGC*CATC|8I|10L
 ```
 
 reads as: skip 14, then a 4 bp fixed barcode with three accepted variants, then an 8 bp UMI, then a 10 bp lookup barcode. Total 36 bases consumed from the 5' end.
@@ -327,7 +340,7 @@ tables$Combinations
 | `Read1Length`, `Read2Length` | read length distribution after trimming |
 | `ReadStatistics` | totals |
 
-`Count` columns are `numeric`, not `integer`, so counts above 2^31 are representable.
+`Count` columns are `numeric`, not `integer`.
 
 Both statistics files carry `--outputPrefix`, so several samples can be written to one output directory without overwriting each other.
 
@@ -346,15 +359,17 @@ barcodeNinja \
   -t -u -f \
   -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
   -k 22 \
-  -d "bcRead1-t2" \
+  -D \
   -o nexus_out -p expt1
 ```
 
 `-t` strips all 9 nt so the output is pure insert. `-u` puts the random barcode into the header as sequence. `-f` sends reads failing the fixed barcode to `*_rejected`. Output splits four ways on the sample barcode.
 
-Deduplication is deliberately left off: the canonical nexus dedup is UMI plus mapped 5' position, which can only be done after alignment.
+Deduplication is optional. You could do it post-alignment. Doing it pre-alignment prevents duplicates to be mapped multiples times if there will multimapping.
 
 ### SHARE-seq
+
+This is a proposed scheme for SHARE-seq. Further development will be needed to matcth the behaviour of the analyis available at : https://hemtools.readthedocs.io/en/latest/content/NGS_pipelines/share_seq.html
 
 Three 8 nt ligation barcodes separated by 30 nt spacers.
 
@@ -362,7 +377,7 @@ Three 8 nt ligation barcodes separated by 30 nt spacers.
 barcodeNinja \
   -r share_R1.fastq.gz -R share_R2.fastq.gz \
   -i share_I1.fastq.gz \
-  -1 "8L|30X|8L|30X|8L" \
+  -1 "15X|8L|30X|8L|30X|8L" \
   -3 "10I" \
   -l share_barcodes.tsv \
   -m 1 -u -t \
@@ -373,7 +388,7 @@ Scope each round's barcodes in the lookup table to `bcIndex1-t1`, `bcIndex1-t3`,
 
 **Do not add `-d` here.** 96³ is 884,736 combinations and therefore 884,736 simultaneously open gzip streams. The cell barcode goes into the header instead; split downstream.
 
-### CUT&RUN / CUT&Tag, dual index
+### dual index libraries
 
 ```bash
 barcodeNinja \
@@ -388,22 +403,6 @@ barcodeNinja \
   -d "bcIndex1-t1|bcIndex2-t1" \
   -o cnr_out -p expt
 ```
-
-### Single-molecule footprinting
-
-Bisulfite-converted reads: demultiplex only, touch nothing else.
-
-```bash
-barcodeNinja \
-  -i smf_I1.fastq.gz -1 "8L" \
-  -r smf_R1.fastq.gz -R smf_R2.fastq.gz \
-  -l smf_barcodes.tsv \
-  -d "bcIndex1-t1" \
-  -k 30 \
-  -o smf_out -p run1
-```
-
-No `-a`: C→T conversion inflates mismatches against the adapter and makes trimming unreliable. No `-D`: dedup must be post-alignment.
 
 ### Amplicon panel with duplex UMIs
 
