@@ -573,7 +573,7 @@ This code is for non-commercial / academic research only.
 
 ## Credits
 
-zlib is being used in conjonction with the internal gzstream version for speading up streaming from disk and lower pressure on memory.
+zlib is being used in conjonction with the internal gzstream version for speeding up streaming from disk and lowering pressure on memory.
 
 barcodeNinja uses software originally developped by others:
 
