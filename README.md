@@ -369,7 +369,7 @@ Deduplication is optional. You could do it post-alignment. Doing it pre-alignmen
 
 ### SHARE-seq
 
-This is a proposed scheme for SHARE-seq. Further development will be needed to matcth the behaviour of the analyis available at : https://hemtools.readthedocs.io/en/latest/content/NGS_pipelines/share_seq.html
+This is a proposed scheme for SHARE-seq. Further development will be needed to match the behaviour of the analyis available at : https://hemtools.readthedocs.io/en/latest/content/NGS_pipelines/share_seq.html
 
 Three 8 nt ligation barcodes separated by 30 nt spacers.
 
