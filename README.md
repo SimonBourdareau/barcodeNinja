@@ -365,7 +365,7 @@ barcodeNinja \
 
 `-t` strips all 9 nt so the output is pure insert. `-u` puts the random barcode into the header as sequence. `-f` sends reads failing the fixed barcode to `*_rejected`. Output splits four ways on the sample barcode.
 
-Deduplication is optional. You could do it post-alignment. Doing it pre-alignment prevents duplicates to be mapped multiples times if there will multimapping.
+Deduplication is optional. You could do it post-alignment. Doing it pre-alignment prevents duplicates to be mapped multiple times if there will multimapping in the first place.
 
 ### SHARE-seq
 
