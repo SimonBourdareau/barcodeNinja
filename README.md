@@ -573,7 +573,8 @@ This code is for non-commercial / academic research only.
 
 ## Credits
 
-barcodeNinja uses software original develop by others:
+barcodeNinja uses software original developped by others:
+
 robin_hood.h is sourced from https://github.com/martinus/robin-hood-hashing/tree/master
 
 cxxopts.hpp is sourced from https://github.com/jarro2783/cxxopts/tree/master
