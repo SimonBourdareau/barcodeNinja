@@ -210,10 +210,10 @@ Identical names collapse into one counter, so several sequences can map to the s
 
 | Option | Meaning |
 |---|---|
-| `-r, --read1File` | read 1 FASTQ (gzipped). **Required.** |
-| `-R, --read2File` | read 2, for paired-end |
-| `-i, --index1File` | index 1 FASTQ |
-| `-I, --index2File` | index 2 FASTQ |
+| `-r, --read1File` | read 1 FASTQ (must be gzipped). **Required.** |
+| `-R, --read2File` | read 2 FASTQ, for paired-end (must be gzipped) |
+| `-i, --index1File` | index 1 FASTQ (must be gzipped) |
+| `-I, --index2File` | index 2 FASTQ (must be gzipped) |
 | `-H, --bcIndexesInHeader` | read index sequences from the read headers instead of index files. Cannot be combined with `-i`/`-I`. |
 
 ### Barcodes
@@ -344,7 +344,7 @@ tables$Combinations
 
 Both statistics files carry `--outputPrefix`, so several samples can be written to one output directory without overwriting each other.
 
-## Worked examples
+## Examples
 
 Read structures below are illustrative — **verify the offsets against your own library** before using them.
 
@@ -422,18 +422,49 @@ The fixed linker after the UMI acts as a structural check — with `-f`, reads m
 
 ---
 
+### Barcodes in the read header (`-H`/`--bcIndexesInHeader`)
+
+Some pipelines (e.g. `bcl2fastq` / `bcl-convert` without separate index files, or SRA downloads) have no `I1`/`I2` files. The index sequences are written into the read header instead. With `-H`, barcodeNinja extracts them from there and treats them exactly like index reads: `-1` describes index 1 and `-2` describes index 2.
+
+```bash
+barcodeNinja \
+  -r file_R1.fastq.gz \
+  -H -1 "8L" \
+  -l barcodes.tsv \
+  -d "bcIndex1-t1" \
+  -o results -p expt1
+```
+
+#### Where it looks
+
+1. It checks the comment field first (the part after the space), then falls back to the read name.
+2. Within that field, it keeps only the text after the last colon.
+3. In that text, it takes every run of at least 2 `A`, `C`, `G`, `T` or `N`. The first run becomes index 1 and the second becomes index 2.
+
+Any non-DNA character separates the two runs, whether it's `+`, `_`, `-` or a space. All of these headers work:
+
+| Header | Index 1 | Index 2 |
+|---|---|---|
+| `@A00123:45:HXXX:1:1101:1000:0 1:N:0:ACGTACGT+TTGCAACT` | `ACGTACGT` | `TTGCAACT` |
+| `@A00123:45:HXXX:1:1101:1000:0_ACGTACGT+TTGCAACT` | `ACGTACGT` | `TTGCAACT` |
+| `@A00123:45:HXXX:1:1101:1000:0_ACGTACGT_BLABLA123` | `ACGTACGT` | — |
+
+Non-DNA tails such as `BLABLA123` are ignored because they contain no run of 2 or more DNA letters.
+
+---
+
 ## Checking that a run is correct
 
 **Check the design before running anything.** `--checkDesign` parses the designs, prints the layout with byte offsets, shows how the first few records would be split, and exits without writing output:
 
 ```bash
-barcodeNinja -r reads_R1.fastq.gz -3 "14X|GATC*ATGC*TTTT|8I|8L" -l barcodes.tsv -o /tmp --checkDesign
+barcodeNinja -r reads_R1.fastq.gz -3 "14X|GATC*ATGC*CATC|8I|8L" -l barcodes.tsv -o /tmp --checkDesign
 ```
 
 ```
 bcRead1   (34 bases consumed)
     t1  bases 1-14  (14 bp)  exclude
-    t2  bases 15-18  (4 bp)  fixed  [GATC, ATGC, TTTT]
+    t2  bases 15-18  (4 bp)  fixed  [GATC, ATGC, CATC]
     t3  bases 19-26  (8 bp)  include (UMI)
     t4  bases 27-34  (8 bp)  lookup
 
