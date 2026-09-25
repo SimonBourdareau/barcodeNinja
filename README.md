@@ -566,7 +566,7 @@ If you have archived RDS files, a quick check for negative `AverageQuality` valu
 ## Citation
 
 If barcodeNinja is useful in your work, please cite it.
-This code is for non-commercial / academic research only.
+This code is for non-commercial use / academic research only. Do not use it for diagnostics purposes.
 
 
 ## Credits
