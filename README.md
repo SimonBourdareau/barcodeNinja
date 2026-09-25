@@ -7,6 +7,8 @@ Simon Bourdareau, PhD
 
 Zeitlinger Lab, Stowers Institute for Medical Research.
 
+*Copyright (c) 2026 Stowers Institute for Medical Research*
+
 ---
 
 ## Purpose
@@ -557,3 +559,13 @@ New in this version:
 - **Both statistics files now carry `--outputPrefix`.** Previously the RDS was always written as `barcodeNinja_statistics.rds`, so several samples written to one output directory would silently overwrite each other's statistics. Scripts that hardcode the old name must be updated when a prefix is used.
 
 If you have archived RDS files, a quick check for negative `AverageQuality` values will identify runs affected by the two quality bugs.
+
+
+---
+
+## Citation
+
+If barcodeNinja is useful in your work, please cite it.
+This code is for non-commercial / academic research only.
+
+*Copyright (c) 2026 Stowers Institute for Medical Research*
