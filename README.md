@@ -568,8 +568,6 @@ If you have archived RDS files, a quick check for negative `AverageQuality` valu
 If barcodeNinja is useful in your work, please cite it.
 This code is for non-commercial / academic research only.
 
-*Copyright (c) 2026 Stowers Institute for Medical Research*
-
 
 ## Credits
 
