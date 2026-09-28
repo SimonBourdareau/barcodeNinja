@@ -124,22 +124,26 @@ There are four token types.
 
 ### `<n>L` — lookup
 
+Used for **indexes** and **combinatorial indexing**.
 `nL` takes **n** bases and matches them against the lookup table supplied with `-l`. The assigned name goes into the read header.
 
 Requires `-l`. barcodeNinja refuses to start if a design contains `L` and no lookup file is given.
 
 ### `<n>I` — include
 
-`nI` takes **n** bases and accepts any sequence. Used for UMIs and random barcodes.
+Used for **UMIs** and **random barcodes**.
+`nI` takes **n** bases and accepts any sequence. 
 
 By default each distinct sequence is assigned a numeric ID (`ID1`, `ID2`, …). With `-u` the literal sequence is reported instead, which is what you normally want for a UMI you intend to use downstream.
 
 ### `<n>X` — exclude
 
+Used for **PCRs handles**.
 `nX` takes **n** bases and discards them. The bases are consumed positionally — subsequent tokens start after them — but nothing is reported and no counter is created. Use this for PCR handles, spacers, and invariant sequence.
 
-### Literal sequence — fixed barcode
+### Literal sequence
 
+Used for **Fixed barcodes**.
 `GATC` takes 4 bases and requires them to match. IUPAC ambiguity codes are supported: `GRTC` matches both `GATC` and `GGTC`. Sequences can be of any length but all alternatives must be the same length. 
 
 Several accepted variants are separated by `*`:
