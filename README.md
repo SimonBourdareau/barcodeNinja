@@ -236,6 +236,7 @@ Identical names collapse into one counter, so several sequences can map to the s
 | `-t, --bcTrim` | off | remove all design tokens from the read sequence |
 | `-u, --returnUMIasSequences` | off | report `I` tokens as sequence rather than numeric ID |
 | `-f, --rejectNonMatchingFixedBarcodes` | off | send reads failing a fixed-barcode token to `*_rejected` |
+| `--globalRejected` | off | with `-f`, send every rejected read (repeats included) to the untagged `*_R1_rejected` / `*_R2_rejected` files even when `-d` is used |
 | `-D, --deduplicateReads` | off | send exact duplicates to `*_duplicated` |
 
 ### Trimming

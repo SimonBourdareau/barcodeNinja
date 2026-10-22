@@ -1,4 +1,4 @@
-// BARCODE NINJA v1.8.2
+// BARCODE NINJA v1.8.3
 // Handling combinatorial barcoding in fastq files in a flexible manner.
 // Simon Bourdareau
 // Spetember 2026
@@ -41,6 +41,7 @@
                                         //New R backend, so it can write a rds statistics file without the need of R being loaded
 // version 1.8.1 - 05-12-26 Minor change - This is a fix of v1.8 where the R session is not opened unless statsRDS is toggled.
 // version 1.8.2 - 09-24-26 Minor change - Minor regressions before final release
+// version 1.8.3 - 10-22-26 Minor change - Each read is routed to a single output destination (duplicates take precedence over rejected). New --globalRejected option.
 
 
 // This tells Rcpp to use C++17 features.
@@ -482,6 +483,8 @@ inline void writeStatisticsTSV(
 ///////////////////    DEFINE A PROCESSED READ DATA STRUCT     ////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
 
+enum class OutputDestination { Main, Duplicate, Rejected };
+
 struct ProcessedReadData {
     Fastq::Read* read1_record;
     Fastq::Read* read2_record;
@@ -545,6 +548,7 @@ struct ProcessedReadData {
   #if LIBR_ACTIVE
         , const bool statsRDS  // Default to false for libR
   #endif
+        , const bool globalRejected = false
   ) // END FUNCTION SIGNATURE
   { // START FUNCTION
 
@@ -659,7 +663,7 @@ struct ProcessedReadData {
 
   } // else : do nothing for now, the OutputFileBuilder(s) will be modify later.
 
-  if (outputDemultiplexingOn.empty() && rejectNonMatchingFixedBarcodes) {
+  if ((outputDemultiplexingOn.empty() || globalRejected) && rejectNonMatchingFixedBarcodes) {
     builderFileReject1.addTag("R1_rejected", false); // false means the nametag is non-removable
     if (hasRead2) {
       builderFileReject2.addTag("R2_rejected", false); // false means the nametag is non-removable
@@ -1349,166 +1353,70 @@ struct ProcessedReadData {
               }
           }
 
-          // Write the read records back into the output files
-          if (outputDemultiplexingOn.empty()) { // No demultiplexing was required
+          const OutputDestination destination = (globalRejected && anyRejected) ? OutputDestination::Rejected
+                                              : (isDuplicateFlag ? OutputDestination::Duplicate
+                                              : (anyRejected ? OutputDestination::Rejected : OutputDestination::Main));
+          const bool tagOutput = !outputDemultiplexingOn.empty()
+                              && !(globalRejected && destination == OutputDestination::Rejected);
 
-            // Add the string headerModifier to the end of the read Name
-            read1_record->modifyName(headerModifier);
-            if (hasRead2) {
-              read2_record->modifyName(headerModifier);
-            }
+          OutputFileBuilder& builderOut1 = destination == OutputDestination::Duplicate ? builderFileDuplicate1
+                                         : (destination == OutputDestination::Rejected ? builderFileReject1 : builderFile1);
+          OutputFileBuilder& builderOut2 = destination == OutputDestination::Duplicate ? builderFileDuplicate2
+                                         : (destination == OutputDestination::Rejected ? builderFileReject2 : builderFile2);
+          std::string& pathOut1 = destination == OutputDestination::Duplicate ? fileDuplicateOutput1
+                                : (destination == OutputDestination::Rejected ? fileRejectedOutput1 : fileReadOutput1);
+          std::string& pathOut2 = destination == OutputDestination::Duplicate ? fileDuplicateOutput2
+                                : (destination == OutputDestination::Rejected ? fileRejectedOutput2 : fileReadOutput2);
 
-            // If the read is NOT rejected
-            if (!anyRejected) {
-              // If the read is NOT flag as duplicate
-              if (!isDuplicateFlag) {
-                uniqueReadscount.countUnique("unique");
-                read1_record->writeFastqRecord(fileReadOutput1, outputFilesManager);
-                if (hasRead2) {
-                    read2_record->writeFastqRecord(fileReadOutput2, outputFilesManager);
-                }
-              // If the read IS flag as duplicate. This will never be triggered if deduplicateReads is false, because the bool 'isDuplicateFlag' won't be modified
-              } else {
-                duplicateReadscount.countUnique("duplicate");
-                read1_record->writeFastqRecord(fileDuplicateOutput1, outputFilesManager);
-                if (hasRead2) {
-                    read2_record->writeFastqRecord(fileDuplicateOutput2, outputFilesManager);
-                }
-              }
-            // If the read IS rejected. This will never be triggered if rejectNonMatchingFixedBarcodes is false, because the bool 'anyRejected' won't be modified
-            } else {
-              rejectedReadscount.countUnique("rejected");
-              read1_record->writeFastqRecord(fileRejectedOutput1, outputFilesManager);
-              if (hasRead2) {
-                  read2_record->writeFastqRecord(fileRejectedOutput2, outputFilesManager);
-              }
-            }
-
-
-          } else {
-
-            // Add tags based on index positions
+          if (tagOutput) {
             for (size_t i = 0; i < demuxIndexPos.size(); ++i) {
-
-              size_t j = demuxIndexPos[i];
-              std::string sequence = headerAndSequencesIndexes[j].getSequenceForHeader(read1_record->Name);
-              std::string newTag = countersForIndexes[j].getBarcodeIDForSequence(sequence);
-
-              if (isDuplicateFlag) {
-                builderFileDuplicate1.addTag(newTag, true); // newTag is removable for next round
-              } else if (anyRejected) {
-                builderFileReject1.addTag(newTag, true); // newTag is removable for next round
-              } else {
-                builderFile1.addTag(newTag, true); // newTag is removable for next round
-              }
-
+              const size_t j = demuxIndexPos[i];
+              const std::string newTag = countersForIndexes[j].getBarcodeIDForSequence(
+                  headerAndSequencesIndexes[j].getSequenceForHeader(read1_record->Name));
+              builderOut1.addTag(newTag, true);
               if (hasRead2) {
-                if (isDuplicateFlag) {
-                  builderFileDuplicate2.addTag(newTag, true); // newTag is removable for next round
-                } else if (anyRejected) {
-                  builderFileReject2.addTag(newTag, true); // newTag is removable for next round
-                } else {
-                  builderFile2.addTag(newTag, true); // newTag is removable for next round
-                }
+                builderOut2.addTag(newTag, true);
               }
             }
 
-            // Add tags based on read positions
             for (size_t i = 0; i < demuxReadPos.size(); ++i) {
-
-              size_t j = demuxReadPos[i];
-              std::string sequence = headerAndSequencesReads[j].getSequenceForHeader(read1_record->Name);
-              std::string newTag = countersForReads[j].getBarcodeIDForSequence(sequence);
-
-              if (isDuplicateFlag) {
-                builderFileDuplicate1.addTag(newTag, true); // newTag is removable for next round
-              } else if (anyRejected) {
-                builderFileReject1.addTag(newTag, true); // newTag is removable for next round
-              } else {
-                builderFile1.addTag(newTag, true); // newTag is removable for next round
-              }
-
+              const size_t j = demuxReadPos[i];
+              const std::string newTag = countersForReads[j].getBarcodeIDForSequence(
+                  headerAndSequencesReads[j].getSequenceForHeader(read1_record->Name));
+              builderOut1.addTag(newTag, true);
               if (hasRead2) {
-                if (isDuplicateFlag) {
-                  builderFileDuplicate2.addTag(newTag, true); // newTag is removable for next round
-                } else if (anyRejected) {
-                  builderFileReject2.addTag(newTag, true); // newTag is removable for next round
-                } else {
-                  builderFile2.addTag(newTag, true); // newTag is removable for next round
-                }
+                builderOut2.addTag(newTag, true);
               }
             }
 
-            // Add final tags and Finalize output filenames
-            if (isDuplicateFlag) {
-              builderFileDuplicate1.addTag("R1_duplicated", true); // tag is removable for next round
-            } else if (anyRejected) {
-              builderFileReject1.addTag("R1_rejected", true); // tag is removable for next round
-            } else {
-              builderFile1.addTag("R1_demultiplexed", true); // tag is removable for next round
-            }
+            const char* suffixTag = destination == OutputDestination::Duplicate ? "duplicated"
+                                  : (destination == OutputDestination::Rejected ? "rejected" : "demultiplexed");
+
+            builderOut1.addTag(std::string("R1_") + suffixTag, true);
+            pathOut1 = builderOut1.finalize(true);
+            builderOut1.removeAllRemovableTags();
 
             if (hasRead2) {
-              if (isDuplicateFlag) {
-                builderFileDuplicate2.addTag("R2_duplicated", true); // tag is removable for next round
-              } else if (anyRejected) {
-                builderFileReject2.addTag("R2_rejected", true); // tag is removable for next round
-              } else {
-                builderFile2.addTag("R2_demultiplexed", true); // tag is removable for next round
-              }
+              builderOut2.addTag(std::string("R2_") + suffixTag, true);
+              pathOut2 = builderOut2.finalize(true);
+              builderOut2.removeAllRemovableTags();
             }
+          }
 
-            fileReadOutput1 = builderFile1.finalize(true); // copyOnly is true so final name is modifiable for next round
-            fileDuplicateOutput1 = builderFileDuplicate1.finalize(true); // copyOnly is true so final name is modifiable for next round
-            fileRejectedOutput1 = builderFileReject1.finalize(true); // copyOnly is true so final name is modifiable for next round
-            if (hasRead2) {
-              fileReadOutput2 = builderFile2.finalize(true); // copyOnly is true so final name is modifiable for next round
-              fileDuplicateOutput2 = builderFileDuplicate2.finalize(true); // copyOnly is true so final name is modifiable for next round
-              fileRejectedOutput2 = builderFileReject2.finalize(true); // copyOnly is true so final name is modifiable for next round
-            }
+          read1_record->modifyName(headerModifier);
+          if (hasRead2) {
+            read2_record->modifyName(headerModifier);
+          }
 
-            // Add the string headerModifier to the end of the read Name
-            read1_record->modifyName(headerModifier);
-            if (hasRead2) {
-              read2_record->modifyName(headerModifier);
-            }
+          switch (destination) {
+            case OutputDestination::Main:      uniqueReadscount.countUnique("unique");       break;
+            case OutputDestination::Duplicate: duplicateReadscount.countUnique("duplicate"); break;
+            case OutputDestination::Rejected:  rejectedReadscount.countUnique("rejected");   break;
+          }
 
-            // Write the records to output files
-            // If the read is NOT rejected
-            if (!anyRejected) {
-              // If the read is NOT flag as duplicate
-              if (!isDuplicateFlag) {
-                uniqueReadscount.countUnique("unique");
-                read1_record->writeFastqRecord(fileReadOutput1, outputFilesManager);
-                if (hasRead2) {
-                    read2_record->writeFastqRecord(fileReadOutput2, outputFilesManager);
-                }
-              // If the read IS flag as duplicate. This will never be triggered if deduplicateReads is false, because the bool 'isDuplicateFlag' won't be modified
-              } else {
-                duplicateReadscount.countUnique("duplicate");
-                read1_record->writeFastqRecord(fileDuplicateOutput1, outputFilesManager);
-                if (hasRead2) {
-                    read2_record->writeFastqRecord(fileDuplicateOutput2, outputFilesManager);
-                }
-              }
-            // If the read IS rejected. This will never be triggered if rejectNonMatchingFixedBarcodes is false, because the bool 'anyRejected' won't be modified
-            } else {
-              rejectedReadscount.countUnique("rejected");
-              read1_record->writeFastqRecord(fileRejectedOutput1, outputFilesManager);
-              if (hasRead2) {
-                  read2_record->writeFastqRecord(fileRejectedOutput2, outputFilesManager);
-              }
-            }
-
-            // Clean up tags for next iteration
-            builderFile1.removeAllRemovableTags();
-            builderFileDuplicate1.removeAllRemovableTags();
-            builderFileReject1.removeAllRemovableTags();
-            if (hasRead2) {
-              builderFile2.removeAllRemovableTags();
-              builderFileDuplicate2.removeAllRemovableTags();
-              builderFileReject2.removeAllRemovableTags();
-            }
+          read1_record->writeFastqRecord(pathOut1, outputFilesManager);
+          if (hasRead2) {
+            read2_record->writeFastqRecord(pathOut2, outputFilesManager);
           }
 
         } // else do not write the read into the output file. And do not report them in the statistics.
@@ -2129,7 +2037,7 @@ void print_help() {
   using namespace Color;
 
   std::cout << "Usage:\n  barcodeNinja [OPTIONS...]\n\n";
-  std::cout << "version 1.8.2 : Handling combinatorial barcoding in fastq files in a flexible manner.\n\n";
+  std::cout << "version 1.8.3 : Handling combinatorial barcoding in fastq files in a flexible manner.\n\n";
 
   std::cout << Modifier::bgBrightBlack << Modifier::white << "=== Input Files ===" << Modifier::reset << "\n";
   std::cout << "  -i, --index1File              " << Modifier::yellow << "<file>   " << Modifier::reset << "     [Optional" << Modifier::reset << "] Path to index1 'something_I1_something.fastq.gz' file\n";
@@ -2164,6 +2072,7 @@ void print_help() {
   std::cout << "  -t, --bcTrim                                 [Optional" << Modifier::reset << "] If toggled, Trim the barcode designs from the read sequence. This argument applies to every token [default false]\n";
   std::cout << "  -u, --returnUMIasSequences                   [Optional" << Modifier::reset << "] If toggled, any token with a UMI will be returned as the actually sequence instead of a number ID [default false]\n";
   std::cout << "  -f, --rejectNonMatchingFixedBarcodes         [Optional" << Modifier::reset << "] If toggled, for any fixed barcode token, the reads that don't match the given sequences will be assigned to 'rejected' files [default false]\n";
+  std::cout << "      --globalRejected                         [Optional" << Modifier::reset << "] Requires -f. Rejected reads, repeats included, go to the untagged *_R1_rejected / *_R2_rejected files even when -d is used [default false]\n";
   std::cout << "  -D, --deduplicateReads                       [Optional" << Modifier::reset << "] If toggled, deduplicate reads based on combined index+read sequences. Duplicates go to *_duplicated.fastq.gz files [default false]\n\n";
 
   std::cout << Modifier::bgBrightBlack << Modifier::white << "=== Trimming ===" << Modifier::reset << "\n";
@@ -2200,7 +2109,7 @@ void print_help() {
 }
 
 int main(int argc, char* argv[]) {
-    cxxopts::Options options("barcodeNinja", "version 1.8.2 : Handling combinatorial barcoding in fastq files in a flexible manner.");
+    cxxopts::Options options("barcodeNinja", "version 1.8.3 : Handling combinatorial barcoding in fastq files in a flexible manner.");
     options.add_options()
 
     // Input files
@@ -2220,6 +2129,7 @@ int main(int argc, char* argv[]) {
     ("t,bcTrim", "[Optional] Trim the barcode designs from the read sequence if set, by default the flag is ignored", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
     ("u,returnUMIasSequences", "[Optional] If toggled, any token with a UMI will be returned as the actually sequence instead of a number ID", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
     ("f,rejectNonMatchingFixedBarcodes", "[Optional] If toggled, for any fixed barcode token, the reads that don't match the given sequences will be assigned to 'rejected' files", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+    ("globalRejected", "[Optional] If toggled with -f, every rejected read (repeats included) goes to the untagged <prefix>_R1_rejected / <prefix>_R2_rejected files even when -d is used [default false]", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
     ("D,deduplicateReads", "[Optional] If toggled, deduplicate reads based on combined index+read sequences using CompactDNA compression", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
 
     // Trimming [Optional]
@@ -2264,7 +2174,7 @@ int main(int argc, char* argv[]) {
 
       if (optionsList.count("version"))
       {
-        std::cout << Color::Modifier::blue << "version 1.8.2 - Final candidate - September 2026" << std::endl;
+        std::cout << Color::Modifier::blue << "version 1.8.3 - October 2026" << std::endl;
         std::cout << "Simon Bourdareau - Zeitlinger Lab" << std::endl;
         std::cout << "Stowers Institute for Medical Research" << Color::Modifier::reset << std::endl;
 
@@ -2309,6 +2219,12 @@ int main(int argc, char* argv[]) {
       const bool returnUMIasSequences = optionsList["returnUMIasSequences"].as<bool>();
       const bool rejectNonMatchingFixedBarcodes = optionsList["rejectNonMatchingFixedBarcodes"].as<bool>();
       const bool deduplicateReads = optionsList["deduplicateReads"].as<bool>();
+      const bool globalRejected = optionsList["globalRejected"].as<bool>();
+      if (globalRejected && !rejectNonMatchingFixedBarcodes) {
+        throw Color::color_invalid_argument(
+            "[barcodeNinja main] ... --globalRejected requires --rejectNonMatchingFixedBarcodes (-f).",
+            Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+      }
       const std::string& adapterR1 = optionsList["adapterR1"].as<std::string>();
       const std::string& adapterR2 = optionsList["adapterR2"].as<std::string>();
       const int trimOverlapDiffLimit = optionsList["trimOverlapDiffLimit"].as<int>();
@@ -2362,7 +2278,7 @@ int main(int argc, char* argv[]) {
             rejectNonMatchingFixedBarcodes, deduplicateReads, adapterR1, adapterR2,
             trimOverlapDiffLimit, trimOverlapRequire, trimdiffPercentLimit, trimQuality,
             trimMinStretchG, minLengthRead, outputDemultiplexingOn, outputPrefix, outputDir,
-            keepQuiet, numThreads, statsTSV, statsRDS);
+            keepQuiet, numThreads, statsTSV, statsRDS, globalRejected);
 
       //////////////////////////////                 FUNCTION CALL                  //////////////////////////////
       //////////////////////////////  is ignored from compilation outside backends  //////////////////////////////
@@ -2374,7 +2290,7 @@ int main(int argc, char* argv[]) {
           rejectNonMatchingFixedBarcodes, deduplicateReads, adapterR1, adapterR2,
           trimOverlapDiffLimit, trimOverlapRequire, trimdiffPercentLimit, trimQuality,
           trimMinStretchG, minLengthRead, outputDemultiplexingOn, outputPrefix, outputDir,
-          keepQuiet, numThreads, statsTSV);
+          keepQuiet, numThreads, statsTSV, globalRejected);
       #endif // backend selection
 
       return EXIT_SUCCESS;
