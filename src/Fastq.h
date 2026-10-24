@@ -117,7 +117,17 @@ public:
                }
              }
 
-           // If no match is found, set the index to the default value
+           const size_t spacePos = Name.find(' ');
+           const size_t nameEnd = (spacePos == std::string::npos) ? Name.size() : spacePos;
+           if (nameEnd >= 2 && Name[nameEnd - 2] == '/' && (Name[nameEnd - 1] == '1' || Name[nameEnd - 1] == '2')) {
+               Index = (Name[nameEnd - 1] == '1') ? 1 : 2;
+               if (spacePos != std::string::npos) {
+                   Comment.assign(Name, spacePos + 1, std::string::npos);
+               }
+               Name.erase(nameEnd - 2);
+               return;
+           }
+
            Index = DEFAULT_INDEX;
         }
 
@@ -194,10 +204,25 @@ public:
       bool readFastqRecord(igzstream& input, Fastq::Read* read) {
           read->EndFlag = false;
 
-          if (!readLine(input, read->Name) ||
-              !readLine(input, read->Sequence) ||
-              !readLine(input, read->Placeholder) ||
-              !readLine(input, read->Quality)) {
+          const bool gotName = readLine(input, read->Name);
+          const bool gotRecord = gotName
+                              && readLine(input, read->Sequence)
+                              && readLine(input, read->Placeholder)
+                              && readLine(input, read->Quality);
+
+          if (input.hasReadError()) {
+              throw Color::color_runtime_error(
+                  "[barcodeNinja main] ... Input file is corrupt or truncated: the gzip stream ended unexpectedly" +
+                  std::string(gotName && !read->Name.empty() ? " near read: " + read->Name : "."),
+                  Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+          }
+
+          if (!gotRecord) {
+              if (gotName && !read->Name.empty()) {
+                  throw Color::color_runtime_error(
+                      "[barcodeNinja main] ... Truncated FASTQ file: incomplete record for read: " + read->Name,
+                      Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+              }
               read->EndFlag = true;
               return false;
           }

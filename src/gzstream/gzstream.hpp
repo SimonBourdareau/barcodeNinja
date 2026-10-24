@@ -27,6 +27,7 @@ private:
     size_t bufferSize;
     int mode{0}; // std::ios::in / out
     bool opened{false};
+    bool readError{false};
     std::mutex writeMutex;
 
     static constexpr size_t PUTBACK_SIZE = 4;
@@ -82,7 +83,14 @@ protected:
         }
 
         int num = gzread(file, buffer.data() + PUTBACK_SIZE, static_cast<unsigned int>(bufferSize - PUTBACK_SIZE));
-        if (num <= 0) return EOF;
+        if (num <= 0) {
+            int errnum = Z_OK;
+            gzerror(file, &errnum);
+            if (num < 0 || errnum != Z_OK) {
+                readError = true;
+            }
+            return EOF;
+        }
 
         setg(buffer.data() + (PUTBACK_SIZE - nPutback),
              buffer.data() + PUTBACK_SIZE,
@@ -115,6 +123,7 @@ public:
         if (!file) return nullptr;
 
         opened = true;
+        readError = false;
 
         if (mode & std::ios::out)
             setp(buffer.data(), buffer.data() + bufferSize);
@@ -136,6 +145,8 @@ public:
     }
 
     bool is_open() const { return opened; }
+
+    bool hasReadError() const { return readError; }
 
     void setBufferSize(size_t size) {
         buffer.resize(size + PUTBACK_SIZE);
@@ -180,6 +191,8 @@ public:
     }
 
     bool is_open() const { return buf.is_open(); }
+
+    bool hasReadError() const { return buf.hasReadError(); }
 };
 
 // ============================================================================

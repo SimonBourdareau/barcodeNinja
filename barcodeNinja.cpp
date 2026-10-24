@@ -313,6 +313,41 @@ inline void printExtraction(const std::string& label, const SequenceUtils::BcDes
     }
 }
 
+inline void requireLookupTableForDesigns(
+    const std::string& bcIndex1, const std::string& bcIndex2,
+    const std::string& bcRead1, const std::string& bcRead2,
+    const std::string& bclookupFilePath)
+{
+    if (!bclookupFilePath.empty()) {
+        return;
+    }
+
+    const std::pair<const char*, const std::string*> designs[] = {
+        {"bcIndex1", &bcIndex1}, {"bcIndex2", &bcIndex2},
+        {"bcRead1", &bcRead1}, {"bcRead2", &bcRead2}
+    };
+
+    std::string offending;
+    for (const auto& entry : designs) {
+        if (entry.second->empty()) {
+            continue;
+        }
+        const SequenceUtils::BcDesign parsed = SequenceUtils::BcDesign::parse(*entry.second);
+        for (const auto& segment : parsed.getSegments()) {
+            if (segment.getType() == 'L') {
+                offending += (offending.empty() ? "" : ", ") + std::string(entry.first);
+                break;
+            }
+        }
+    }
+
+    if (!offending.empty()) {
+        throw Color::color_invalid_argument(
+            "[barcodeNinja] ... The design(s) " + offending + " contain a lookup token (L) but no lookup table was given. Provide one with -l/--bclookupFilePath.",
+            Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+    }
+}
+
 inline void runDesignCheck(
     const std::string& index1File, const std::string& index2File,
     const std::string& read1File, const std::string& read2File,
@@ -320,6 +355,8 @@ inline void runDesignCheck(
     const std::string& bcRead1, const std::string& bcRead2,
     const bool bcIndexesInHeader, const std::string& bclookupFilePath)
 {
+    requireLookupTableForDesigns(bcIndex1, bcIndex2, bcRead1, bcRead2, bclookupFilePath);
+
     const int PREVIEW_READS = 3;
 
     std::cout << Color::Modifier::bold << Color::Modifier::blue
@@ -565,6 +602,8 @@ struct ProcessedReadData {
     throw Color::color_runtime_error("[barcodeNinja main] ... At least read1 file is required.", Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
   }
 
+  requireLookupTableForDesigns(bcIndex1, bcIndex2, bcRead1, bcRead2, bclookupFilePath);
+
   if (bcIndexesInHeader) {
     if (!index1File.empty() || !index2File.empty()) {
       throw Color::color_runtime_error("[barcodeNinja main] ... Index files are provided, but bcIndexesInHeader is set to true. Please provide either index files or set bcIndexesInHeader to true.", Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
@@ -743,6 +782,19 @@ struct ProcessedReadData {
   // The Read2 can be optional so only open the stream if it exists.
   if (hasRead2) fileRead2.open(read2File.c_str(), std::ios::in);
 
+  if (!fileRead1.is_open()) {
+    throw Color::color_runtime_error("[barcodeNinja main] ... Cannot open read1File: " + read1File, Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+  }
+  if (hasRead2 && !fileRead2.is_open()) {
+    throw Color::color_runtime_error("[barcodeNinja main] ... Cannot open read2File: " + read2File, Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+  }
+  if (hasIndex1 && !fileIndex1.is_open()) {
+    throw Color::color_runtime_error("[barcodeNinja main] ... Cannot open index1File: " + index1File, Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+  }
+  if (hasIndex2 && !fileIndex2.is_open()) {
+    throw Color::color_runtime_error("[barcodeNinja main] ... Cannot open index2File: " + index2File, Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+  }
+
 
 
   /////////////////          DIVERSE INITIAL MESSAGES          /////////////////
@@ -843,9 +895,7 @@ struct ProcessedReadData {
   //////////////////////////////  is ignored from compilation outside backends  //////////////////////////////
   //////////////////////////////              Through Rcpp backend              //////////////////////////////
   //////////////////////////////               Through libR backend            //////////////////////////////
-    #if RCPP_ACTIVE || LIBR_ACTIVE
-        try {  // Try-catch for Rcpp::checkUserInterrupt()
-    #endif  // Backend selection
+        try {
 
 
 
@@ -895,6 +945,10 @@ struct ProcessedReadData {
             if (hasIndex2) {
               index2_record = readPool.allocate();
               fastq.readFastqRecord(fileIndex2, index2_record);
+            }
+
+            if (hasIndex1 && hasIndex2 && index1_record->EndFlag != index2_record->EndFlag) {
+              throw Color::color_runtime_error("[barcodeNinja main] ... The fastq files 'index1File' and 'index2File' do not contain the same number of records (one of them ended early).", Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
             }
 
             bool indexEndReached = false;
@@ -1033,6 +1087,10 @@ struct ProcessedReadData {
           // Check if either read1File or read2File has reached the end of the file
           // EndFlag is True if it reaches the end of file
           // This allow to exit the internal FOR loop once the end of file is reached
+          if (hasRead2 && read1_record->EndFlag != read2_record->EndFlag) {
+            throw Color::color_runtime_error("[barcodeNinja main] ... The fastq files 'read1File' and 'read2File' do not contain the same number of records (one of them ended early).", Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+          }
+
           if (read1_record->EndFlag || read2_record->EndFlag) {
             // std::cout << "\r";
             // std::cout << Color::Modifier::bold << "[barcodeNinja main] ... End of file reached for read files (Barcode processing block)." << Color::Modifier::reset << std::endl;
@@ -1227,6 +1285,10 @@ struct ProcessedReadData {
           // Check if either read1File or read2File has reached the end of the file
           // EndFlag is True if it reaches the end of file
           // This allow to exit the internal FOR loop once the end of file is reached
+          if (hasRead2 && read1_record->EndFlag != read2_record->EndFlag) {
+            throw Color::color_runtime_error("[barcodeNinja main] ... The fastq files 'read1File' and 'read2File' do not contain the same number of records (one of them ended early).", Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+          }
+
           if (read1_record->EndFlag) {
             // std::cout << "\r";
             // std::cout << Color::Modifier::bold << "[barcodeNinja main] ... End of file reached for read files. (Output block)." << Color::Modifier::reset << std::endl;
@@ -1338,7 +1400,8 @@ struct ProcessedReadData {
 
         // The records are saved into the output streams only if they match the length condition below. Short reads will never be reported in the current version
         totalReadsProcessedcount.countUnique("total");
-        if (read1_record->Sequence.length() >= static_cast<size_t>(minLengthRead)) { // Only if the length of both reads is higher or equal than minLengthRead
+        if (read1_record->Sequence.length() >= static_cast<size_t>(minLengthRead)
+            && (!hasRead2 || read2_record->Sequence.length() >= static_cast<size_t>(minLengthRead))) {
           totalReadsWrittencount.countUnique("written");
           // Count unique barcode combinations and read lengths
           if (collectStatistics) {
@@ -1347,9 +1410,7 @@ struct ProcessedReadData {
               readLength1.countUnique(std::to_string(read1_record->Sequence.length()));  // Distribution of read lengths after trimming
 
               if (hasRead2) {
-                if (read2_record->Sequence.length() >= static_cast<size_t>(minLengthRead)) {
-                  readLength2.countUnique(std::to_string(read2_record->Sequence.length()));  // Distribution of read lengths after trimming
-                }
+                readLength2.countUnique(std::to_string(read2_record->Sequence.length()));
               }
           }
 
@@ -1511,8 +1572,21 @@ struct ProcessedReadData {
                         << Color::Modifier::reset << std::endl;
             std::exit(EXIT_FAILURE);
           }
+    #else
+    } catch (...) {
+            readPool.clearPool();
+            outputFilesManager.close_all(true);
+            fileIndex1.close();
+            fileIndex2.close();
+            fileRead1.close();
+            fileRead2.close();
 
-    #endif// Backend selection
+            std::cerr << Color::Modifier::bold << Color::Modifier::red
+                        << "[barcodeNinja main] ... Run aborted: partial output files have been deleted."
+                        << Color::Modifier::reset << std::endl;
+            throw;
+    }
+    #endif
 
 
     // Closing files
@@ -2258,13 +2332,6 @@ int main(int argc, char* argv[]) {
                        bcIndex1, bcIndex2, bcRead1, bcRead2,
                        bcIndexesInHeader, bclookupFilePath);
         return EXIT_SUCCESS;
-      }
-
-      // Check if the barcode design contains a lookup type (L)
-      if (bcIndex1.find('L') != std::string::npos || bcIndex2.find('L') != std::string::npos) {
-        if (bclookupFilePath == "") {
-          throw Color::color_invalid_argument("[barcodeNinja main] ... You are declaring designs with lookup information, but the path to a lookup table with bclookupFilePath is missing.", Color::Modifier::brightRed);
-        }
       }
 
 

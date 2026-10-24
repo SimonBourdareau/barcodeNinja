@@ -250,7 +250,7 @@ Identical names collapse into one counter, so several sequences can map to the s
 | `--trimdiffPercentLimit` | 0.1 | maximum mismatch fraction in the overlap |
 | `--trimQuality` | 20 | 3' quality trimming threshold |
 | `--trimMinStretchG` | 5 | minimum poly-G run to trim (two-colour chemistry) |
-| `-k, --minLengthRead` | 22 | reads shorter than this after trimming are dropped. Minimum 12. |
+| `-k, --minLengthRead` | 22 | read pairs in which either read is shorter than this after trimming are dropped. Minimum 12. |
 
 ### Output
 
@@ -495,7 +495,7 @@ A wrong offset shows up immediately as `<- NO MATCH` and a visible frameshift in
 
 **Check the read length distribution** after trimming. A large spike at short lengths suggests adapter trimming is firing more than it should.
 
-**Run a subset first.** `head -c 100000000` on a gzipped FASTQ gives a truncated but valid stream for a fast sanity check.
+**Run a subset first.** `zcat in.fastq.gz | head -n 4000000 | gzip > subset.fastq.gz` gives the first million reads as a complete, valid file. Do not cut a gzip file with `head -c`: a truncated gzip stream is an error.
 
 ---
 
@@ -508,7 +508,19 @@ One gzip stream is held open per output file for the whole run, and you have exc
 `-H` with `-2` set, on a single-index run. Drop `-2`.
 
 **`The fastq files 'read1File' and 'read2File' are not sorted the same way`**
-R1 and R2 are not in the same order, or are from different runs.
+R1 and R2 are not in the same order, or are from different runs. Legacy `/1` and `/2` name suffixes are recognised and do not trigger this error.
+
+**`Cannot open read1File: ...`** (or `read2File`, `index1File`, `index2File`)
+The path is wrong or the file is not readable.
+
+**`Input file is corrupt or truncated: the gzip stream ended unexpectedly`**
+The gzip file is incomplete, typically an interrupted copy or download. `gzip -t file.fastq.gz` confirms it. Re-transfer the file.
+
+**`Truncated FASTQ file: incomplete record for read: ...`**
+The last record has fewer than four lines.
+
+**`... do not contain the same number of records (one of them ended early)`**
+The paired files (R1/R2 or I1/I2) have different lengths: one is truncated or they come from different runs.
 
 **`Empty token in bcDesign`**
 A doubled or trailing `|` in a design string.
@@ -547,7 +559,17 @@ The design does not match the actual read structure. Print a few reads (`zcat fi
 
 ---
 
-## Changes in this version
+## Changes in v1.8.3
+
+- **Each read goes to exactly one output.** With `-d -D -f`, a read that was both a duplicate and rejected was written to a stray untagged `<prefix>.fastq.gz` with R1 and R2 interleaved. Duplicates now take precedence over rejected in every mode.
+- **`--globalRejected`** (requires `-f`) sends every rejected read to the untagged `*_R1_rejected` / `*_R2_rejected` files even when `-d` is used.
+- **A lookup token (`L`) in any design without `-l` is an error,** including read designs and `--checkDesign`. Previously only index designs were checked.
+- **Unreadable or truncated input is an error.** A missing input file, a truncated gzip stream, an incomplete last record, or paired files with different record counts previously ended with a normal "Done!" and partial output.
+- **Failed runs delete their partial output in every backend.** Previously only the R backends did.
+- **`-k` applies to both reads.** A pair is dropped if either read is shorter than the minimum.
+- **Legacy `/1` and `/2` read names are paired correctly** instead of failing the ordering check.
+
+## Changes in v1.8.2
 
 Several of these alter output relative to v1.8.1. Runs made with the older version may need repeating.
 
