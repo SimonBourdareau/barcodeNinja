@@ -37,6 +37,9 @@ Two backends. Both produce the same FASTQ output; they differ only in whether st
 If you do not need the optional statistics in RDS format, no dependency beyond zlib is required:
 
 ```bash
+git clone https://github.com/SimonBourdareau/barcodeNinja.git
+cd barcodeNinja
+
 make
 ```
 
@@ -59,6 +62,9 @@ R CMD config --ldflags
 Then build from the directory containing `barcodeNinja.cpp`:
 
 ```bash
+git clone https://github.com/SimonBourdareau/barcodeNinja.git
+cd barcodeNinja
+
 make clean
 make BACKEND=R
 conda deactivate
