@@ -328,7 +328,7 @@ Total reads written (passed length filter): 3987221
 Unique reads: 3987221
 ```
 
-**`--statsTSV`** writes the full tables to `<outputDir>/<prefix>_barcodeNinja_statistics.tsv` in every backend, including the plain `make` build. Long format, one row per record:
+**`--statsTSV`** writes the full tables to `<outputDir>/<prefix>_barcodeNinja_statistics.tsv` in every backend, including the plain `make` build (pure C++). Long format, one row per record:
 
 ```
 table	key	assigned_name	count	average_quality
