@@ -73,7 +73,7 @@ conda deactivate
 
 `make BACKEND=R` bundles libR and the R runtime into `./lib`, so the resulting binary runs on nodes that have no R installed — which is why `conda deactivate` before running it is safe.
 
-NOTE: Erasing the build including the ./lib will break the program. libR is dynamically associated with barcodeNinja when you run the software instead of being compiled and embedded entirely in the main program.
+NOTE: Erasing the build, including ./lib, will break the program. libR is dynamically linked to barcodeNinja at run time instead of being compiled and embedded entirely in the main program.
 
 ### Notes
 
@@ -382,11 +382,11 @@ barcodeNinja \
 
 `-t` strips all 9 nt so the output is pure insert. `-u` puts the random barcode into the header as sequence. `-f` sends reads failing the fixed barcode to `*_rejected`. Output splits four ways on the sample barcode.
 
-Deduplication is optional. You could do it post-alignment. Doing it pre-alignment avoids mapping duplicates at all, which matters when the library has substantial multimapping.
+Deduplication is optional. You could do it post-alignment. Doing it pre-alignment prevents duplicates from being mapped multiple times if there is multimapping in the first place.
 
 ### SHARE-seq
 
-This is a proposed scheme for SHARE-seq. Further development will be needed to match the behaviour of the analysis available at : https://hemtools.readthedocs.io/en/latest/content/NGS_pipelines/share_seq.html
+This is a proposed scheme for SHARE-seq. Further development will be needed to match the behaviour of the analysis available at: https://hemtools.readthedocs.io/en/latest/content/NGS_pipelines/share_seq.html
 
 Three 8 nt ligation barcodes separated by 30 nt spacers.
 
@@ -608,9 +608,9 @@ This code is for non-commercial use / academic research only. Do not use it for 
 
 ## Credits
 
-zlib is being used in conjunction with the internal gzstream version for speeding up streaming from disk and lowering pressure on memory.
+zlib is used in conjunction with the internal gzstream version for speeding up streaming from disk and lowering pressure on memory.
 
-barcodeNinja uses software originally developed by others:
+barcodeNinja uses softwares originally developed by others:
 
 robin_hood.h is sourced from https://github.com/martinus/robin-hood-hashing/tree/master
 
@@ -618,8 +618,8 @@ cxxopts.hpp is sourced from https://github.com/jarro2783/cxxopts/tree/master
 
 Both are version-fixed in barcodeNinja for stability of the code.
 
-gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream thanks to Claude! It has been rewritten in Modern C++17, it is fully RAII-safe and thread-safe.
+gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream thanks to Claude! It has been rewritten in modern C++17, it is fully RAII-safe and thread-safe.
 
-Disclaimer: Claude was used to review, harden and test this code.
+Disclaimer: Claude Code was used to strengthen the code and test for regressions.
 
 *Copyright (c) 2026 Stowers Institute for Medical Research*
