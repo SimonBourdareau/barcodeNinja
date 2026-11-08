@@ -223,31 +223,6 @@ private:
     }
   }
 
-  for (int offset = 1 - m; offset < 0; ++offset) {
-    const int overlap_len = std::min(n, m + offset);
-    if (overlap_len < overlapRequire) continue;
-
-    const int localLimit = std::min(
-        overlapDiffLimit,
-        static_cast<int>(overlap_len * diffPercentLimit));
-
-    int diff = 0;
-    bool aborted = false;
-    const int adapter_start = -offset;
-
-    for (int i = 0; i < overlap_len; ++i) {
-      const char r = read[i];
-      diff += (r != adapter[adapter_start + i] && r != 'N');
-      if (diff > localLimit) { aborted = true; break; }
-    }
-
-    if (aborted) continue;
-
-    if (static_cast<size_t>(diff) < best.diff) {
-      best = {true, offset, static_cast<size_t>(overlap_len), static_cast<size_t>(diff)};
-    }
-  }
-
   return best;
 }
 };

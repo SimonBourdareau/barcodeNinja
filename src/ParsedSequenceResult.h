@@ -111,8 +111,13 @@ inline ParsedSequenceResult parseSequences(
     for (const auto& segment : design.getSegments()) {
         const size_t segmentSize = static_cast<size_t>(std::max(0, segment.getSize()));
 
-        std::string_view sequenceSegment(sequence.data() + seqPos, segmentSize);
-        std::string_view qualitySegment(quality.data() + seqPos, segmentSize);
+        std::string sequenceSegment(sequence.data() + seqPos, segmentSize);
+        for (char& base : sequenceSegment) {
+            if (base >= 'a' && base <= 'z') {
+                base = static_cast<char>(base - 'a' + 'A');
+            }
+        }
+        std::string qualitySegment(quality.data() + seqPos, segmentSize);
 
         bool matchFound = (segment.getType() != 'S'); // default true for non-S segments
 
@@ -129,8 +134,8 @@ inline ParsedSequenceResult parseSequences(
 
         rejected |= !matchFound;
         parsedSegments.emplace_back(
-            std::string(sequenceSegment),
-            std::string(qualitySegment),
+            std::move(sequenceSegment),
+            std::move(qualitySegment),
             segment
         );
 
