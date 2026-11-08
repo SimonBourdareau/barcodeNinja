@@ -236,7 +236,7 @@ Identical names collapse into one counter, so several sequences can map to the s
 
 | Option | Default | Meaning |
 |---|---|---|
-| `-1 -2 -3 -4` | — | designs (see above) |
+| `-1 -2 -3 -4, --bcIndex1 --bcIndex2 --bcRead1 --bcRead2` | — | designs (see above) |
 | `-l, --bclookupFilePath` | — | lookup table, required if any design uses `L` |
 | `-m, --bcMaxMismatches` | 0 | mismatches allowed when matching a lookup barcode |
 | `-t, --bcTrim` | off | remove all design tokens from the read sequence |
