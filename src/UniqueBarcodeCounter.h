@@ -8,6 +8,7 @@
 #include <tuple>
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include <unordered_map>
 #include <variant>
@@ -256,13 +257,10 @@ public:
         if (tokens == "any") { // tokens does not cary any information
 
           if (orientation == "S" || orientation == "SR" || orientation == "RS") {
-            lookupTable[sequence] = name;  // Always store sense sequence for these cases
-            lookupIsReverseComplement[sequence] = false;
+            insertLookupEntry(sequence, name, false);
           }
           if (orientation == "R" || orientation == "SR" || orientation == "RS") {
-            std::string reverseComplement = SequenceUtils::reverseComplement(sequence);
-            lookupTable[reverseComplement] = name;  // Store reverse complement
-            lookupIsReverseComplement.emplace(reverseComplement, true); // a palindromic barcode keeps its sense orientation
+            insertLookupEntry(SequenceUtils::reverseComplement(sequence), name, true);
           }
 
         } else { //If tokens contains information
@@ -289,13 +287,10 @@ public:
 
             if (std::find(positions.begin(), positions.end(), token) != positions.end()) {
               if (orientation == "S" || orientation == "SR" || orientation == "RS") {
-                lookupTable[sequence] = name;  // Always store sense sequence for these cases
-                lookupIsReverseComplement[sequence] = false;
+                insertLookupEntry(sequence, name, false);
               }
               if (orientation == "R" || orientation == "SR" || orientation == "RS") {
-                std::string reverseComplement = SequenceUtils::reverseComplement(sequence);
-                lookupTable[reverseComplement] = name;  // Store reverse complement
-                lookupIsReverseComplement.emplace(reverseComplement, true); // a palindromic barcode keeps its sense orientation
+                insertLookupEntry(SequenceUtils::reverseComplement(sequence), name, true);
               }
             }
           }
@@ -561,16 +556,18 @@ void validateBarcodeDistances(int bcMaxMismatches) {
   if (distancesChecked) return;
   distancesChecked = true;
 
-  if (bcMaxMismatches < 1 || lookupTable.size() < 2) return;
+  if (lookupTable.size() < 2) return;
 
   static constexpr size_t MAX_TABLE_FOR_CHECK = 5000;
   if (lookupTable.size() > MAX_TABLE_FOR_CHECK) {
-    std::cerr << Color::Modifier::bold
-              << "[barcodeNinja] NOTE: the lookup table holds " << lookupTable.size()
-              << " entries, too many to check pairwise distances. Reads lying between two "
-              << "barcodes at --bcMaxMismatches " << bcMaxMismatches
-              << " will be assigned to whichever is found first."
-              << Color::Modifier::reset << std::endl;
+    if (bcMaxMismatches >= 1) {
+      std::cerr << Color::Modifier::bold
+                << "[barcodeNinja] NOTE: the lookup table holds " << lookupTable.size()
+                << " entries, too many to check pairwise distances. Reads lying between two "
+                << "barcodes at --bcMaxMismatches " << bcMaxMismatches
+                << " will be assigned to whichever is found first."
+                << Color::Modifier::reset << std::endl;
+    }
     return;
   }
 
@@ -579,45 +576,64 @@ void validateBarcodeDistances(int bcMaxMismatches) {
   for (const auto& entry : lookupTable) {
     entries.emplace_back(entry.first, entry.second);
   }
+  std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
+    return a.second != b.second ? a.second < b.second : a.first < b.first;
+  });
 
+  const auto& maskTable = SequenceUtils::SequenceUtilsDetail::iupacMaskTable;
+  const int tooClose = 2 * bcMaxMismatches;
   int minDistance = std::numeric_limits<int>::max();
-  std::string worstA, worstB, worstNameA, worstNameB;
+  size_t offendingPairs = 0;
+  size_t worstA = 0;
+  size_t worstB = 0;
 
   for (size_t i = 0; i < entries.size(); ++i) {
     for (size_t j = i + 1; j < entries.size(); ++j) {
       if (entries[i].first.size() != entries[j].first.size()) continue;
-      if (entries[i].second == entries[j].second) continue; // same barcode, both orientations
+      if (entries[i].second == entries[j].second) continue;
 
       int distance = 0;
+      bool farEnough = false;
       for (size_t k = 0; k < entries[i].first.size(); ++k) {
-        if (entries[i].first[k] != entries[j].first[k]) {
-          ++distance;
-          if (distance >= minDistance) break;
+        const uint8_t maskA = maskTable[static_cast<unsigned char>(entries[i].first[k])];
+        const uint8_t maskB = maskTable[static_cast<unsigned char>(entries[j].first[k])];
+        if ((maskA & maskB) == 0) {
+          if (++distance > tooClose) {
+            farEnough = true;
+            break;
+          }
         }
       }
+      if (farEnough) continue;
 
+      ++offendingPairs;
       if (distance < minDistance) {
         minDistance = distance;
-        worstA = entries[i].first;  worstNameA = entries[i].second;
-        worstB = entries[j].first;  worstNameB = entries[j].second;
+        worstA = i;
+        worstB = j;
       }
     }
   }
 
-  if (minDistance == std::numeric_limits<int>::max()) return;
-  if (minDistance > 2 * bcMaxMismatches) return;
+  if (offendingPairs == 0) return;
 
-  const int safeMismatches = (minDistance - 1) / 2;
+  const auto describe = [this](const std::pair<std::string, std::string>& entry) {
+    return entry.second + " (" + entry.first + (isReverseComplementEntry(entry.first) ? ", reverse complement)" : ")");
+  };
 
-  std::cerr << Color::Modifier::bold << Color::Modifier::red
-            << "[barcodeNinja] WARNING: " << worstNameA << " (" << worstA << ") and "
-            << worstNameB << " (" << worstB << ") differ by " << minDistance
-            << (minDistance == 1 ? " base." : " bases.")
-            << Color::Modifier::reset << std::endl;
-  std::cerr << "               With --bcMaxMismatches " << bcMaxMismatches
-            << ", reads between them are assigned arbitrarily." << std::endl;
-  std::cerr << "               Minimum pairwise distance in this table: " << minDistance
-            << ". Safe --bcMaxMismatches: " << safeMismatches << "." << std::endl;
+  std::ostringstream message;
+  message << "Module [UniqueBarcodeCounter::validateBarcodeDistances] ... Lookup barcodes are too close for --bcMaxMismatches "
+          << bcMaxMismatches << ": " << describe(entries[worstA]) << " and " << describe(entries[worstB]);
+  if (minDistance == 0) {
+    message << " overlap. No --bcMaxMismatches value can separate them: correct the barcode design.";
+  } else {
+    message << " differ by " << minDistance << (minDistance == 1 ? " base." : " bases.")
+            << " " << offendingPairs << " pair(s) of different barcodes in this table lie within 2 x --bcMaxMismatches."
+            << " Lower --bcMaxMismatches to " << (minDistance - 1) / 2 << " or correct the barcode design.";
+  }
+
+  throw Color::color_runtime_error(message.str(),
+                                   Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
 }
 
 /**
@@ -697,6 +713,30 @@ void printDiagnostics(const std::string& label) const {
 private:
   char type; ///< Type of counter ('L', 'S', or 'I')
   int token;
+
+  /**
+   * @brief Adds one sequence to the lookup table, refusing a sequence already assigned to another name
+   *
+   * @param sequence The sequence to store, already oriented
+   * @param name The barcode name the sequence belongs to
+   * @param isReverseComplement Whether the sequence is stored as a reverse complement
+   * @throws Color::color_runtime_error if the sequence is already assigned to a different name
+   */
+  void insertLookupEntry(const std::string& sequence, const std::string& name, bool isReverseComplement) {
+    const auto existing = lookupTable.find(sequence);
+    if (existing != lookupTable.end() && existing->second != name) {
+      throw Color::color_runtime_error("Module [UniqueBarcodeCounter::loadLookupTable] ... Sequence " + sequence +
+                                       " is assigned to both '" + existing->second + "' and '" + name +
+                                       "' in the lookup file once orientations are applied. Each sequence must belong to one barcode name.",
+                                       Color::colorCombiner(Color::Modifier::bold, Color::Modifier::bgBrightRed, Color::Modifier::white));
+    }
+    lookupTable[sequence] = name;
+    if (isReverseComplement) {
+      lookupIsReverseComplement.emplace(sequence, true);
+    } else {
+      lookupIsReverseComplement[sequence] = false;
+    }
+  }
 
   int uniqueID = 0;
   /**
