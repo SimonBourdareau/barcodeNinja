@@ -7,7 +7,7 @@ Simon Bourdareau, PhD
 
 Zeitlinger Lab, Stowers Institute for Medical Research.
 
-*Copyright (c) 2026 Stowers Institute for Medical Research*
+*Copyright (c) 2026 Simon Bourdareau / Stowers Institute for Medical Research *
 
 ---
 
@@ -622,4 +622,4 @@ gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream
 
 Disclaimer: Claude Code was used to strengthen the code and test for regressions.
 
-*Copyright (c) 2026 Stowers Institute for Medical Research*
+*Copyright (c) 2026 Simon Bourdareau / Stowers Institute for Medical Research *
