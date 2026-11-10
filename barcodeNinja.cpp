@@ -90,8 +90,9 @@
 #include "src/Counter.h"                // This is new code written by Simon
 #include "src/UniqueBarcodeCounter.h"   // This is new code written by Simon
 
-// Include CompactDNA header
-#include "src/CompactDNA.h"                 // This is new code written by Simon
+// Include xxHash for the 128-bit content hashes used by deduplication
+#define XXH_INLINE_ALL
+#include "src/xxhash/xxhash.h"              // BSD 2-Clause, sourced from https://github.com/Cyan4973/xxHash/tree/v0.8.3
 
 #include "src/cxxopts.hpp"  // For command-line option parsing
 
@@ -184,41 +185,40 @@ class DuplicationTracker {
 public:
     DuplicationTracker() {}
 
-    // Check if a read combination is a duplicate and track it
     bool isDuplicate(const std::string& seq) {
 
-        // Encode using CompactDNA
-        std::vector<uint8_t> encoded;
-        try {
-            encoded = CompactDNA::encode(seq);
-        } catch (const std::runtime_error& e) {
-            // If encoding fails (e.g., invalid nucleotides), treat as not duplicate
+        foldBuffer.resize(seq.size());
+        for (size_t i = 0; i < seq.size(); ++i) {
+            const char c = seq[i];
+            foldBuffer[i] = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
+        }
+
+        const XXH128_hash_t hash = XXH3_128bits(foldBuffer.data(), foldBuffer.size());
+
+        if (seenHashes.insert(Hash128{hash.low64, hash.high64}).second) {
             return false;
         }
 
-        // Convert encoded vector to string for hashing
-        std::string encoded_str(reinterpret_cast<char*>(encoded.data()), encoded.size());
-
-        // Check if we've seen this encoded sequence before
-        auto it = duplicateMap.find(encoded_str);
-        if (it != duplicateMap.end()) {
-            // This is a duplicate - store header for later retrieval
-            duplicateCount++;
-            return true;
-        } else {
-            // First time seeing this combination
-            duplicateMap[encoded_str] = true;
-            return false;
-        }
+        duplicateCount++;
+        return true;
     }
 
-    // Get memory usage stats (optional)
-    size_t getUniqueCount() const { return duplicateMap.size(); }
+    size_t getUniqueCount() const { return seenHashes.size(); }
     size_t getDuplicateCount() const { return duplicateCount; }
 
 private:
-    // Use robin_hood map for efficiency
-    robin_hood::unordered_flat_map<std::string, bool> duplicateMap;
+    struct Hash128 {
+        uint64_t low;
+        uint64_t high;
+        bool operator==(const Hash128& other) const { return low == other.low && high == other.high; }
+    };
+
+    struct Hash128Hasher {
+        size_t operator()(const Hash128& key) const { return static_cast<size_t>(key.low); }
+    };
+
+    std::string foldBuffer;
+    robin_hood::unordered_flat_set<Hash128, Hash128Hasher> seenHashes;
 }; // END OF CLASS
 
 

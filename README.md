@@ -243,7 +243,7 @@ Identical names collapse into one counter, so several sequences can map to the s
 | `-u, --returnUMIasSequences` | off | report `I` tokens as sequence rather than numeric ID |
 | `-f, --rejectNonMatchingFixedBarcodes` | off | send reads failing a fixed-barcode token to `*_rejected` |
 | `--globalRejected` | off | with `-f`, send every rejected read (repeats included) to the untagged `*_R1_rejected` / `*_R2_rejected` files even when `-d` is used |
-| `-D, --deduplicateReads` | off | send exact duplicates to `*_duplicated` |
+| `-D, --deduplicateReads` | off | send identical reads to `*_duplicated` |
 
 ### Trimming
 
@@ -551,7 +551,7 @@ The design does not match the actual read structure. Print a few reads (`zcat fi
 
 **Ambiguous matches are not rejected.** If a sequence is equidistant from two lookup barcodes at the allowed mismatch level, one is chosen and it is not currently defined which. Use `-m 0` where this matters.
 
-**Deduplication is exact and pre-alignment.** `-D` compares the concatenated barcode and read sequences. A single sequencing error makes a duplicate look unique, and it does not know about mapping position. For fragment-level duplicates, dedup after alignment.
+**Deduplication is by sequence identity and pre-alignment.** `-D` compares 128-bit hashes (xxHash XXH3) of the concatenated barcode and read sequences, ignoring case, so reads containing any character are deduplicated. Two different sequences would be merged only by a hash collision, with a probability of about 10^-21 even at a billion unique reads. A single sequencing error makes a duplicate look unique, and it does not know about mapping position. For fragment-level duplicates, dedup after alignment.
 
 **Deduplication runs before adapter trimming.** Duplicates differing only in read-through length are not collapsed.
 
@@ -559,7 +559,7 @@ The design does not match the actual read structure. Print a few reads (`zcat fi
 
 **`X` tokens are consumed but never reported** — they still count for token numbering in `-d` and in lookup scopes.
 
-**Memory** scales with the number of distinct barcodes and, with `-D`, with the number of unique reads. A large deduplicated run can use tens of gigabytes.
+**Memory** scales with the number of distinct barcodes and, with `-D`, with the number of unique reads, at roughly 20 to 45 bytes per unique read whatever its length.
 
 **Linux only, by design.** The build uses `/proc/self/exe`, `sys/sysinfo.h`, `getrusage` with Linux units, and POSIX headers throughout. There are no platform conditionals.
 
@@ -616,7 +616,9 @@ robin_hood.h is sourced from https://github.com/martinus/robin-hood-hashing/tree
 
 cxxopts.hpp is sourced from https://github.com/jarro2783/cxxopts/tree/master
 
-Both are version-fixed in barcodeNinja for stability of the code.
+xxhash.h (XXH3 128-bit hashing for deduplication, BSD 2-Clause) is sourced from https://github.com/Cyan4973/xxHash/tree/v0.8.3
+
+All three are version-fixed in barcodeNinja for stability of the code.
 
 gzstream.hpp is a port of https://github.com/grenaud/libgab/tree/master/gzstream thanks to Claude! It has been rewritten in modern C++17, it is fully RAII-safe and thread-safe.
 
