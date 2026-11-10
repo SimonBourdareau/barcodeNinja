@@ -1,13 +1,13 @@
 // CompactDNA.h
-// Ultra-fast DNA compression for large-scale in-memory deduplication
-// Hybrid 2-bit/3-bit DNA compression for maximum efficiency
-//    - 2 bits for A/C/G/T (00,01,10,11)
-//    - Separate bitmask for 'N' positions
-//    - Only pay the 'N' penalty when needed
+// Compact DNA encoding: 2 bits per base plus an optional bitmask of 'N' positions
+//    - 2 bits for A/C/G/T (00,01,10,11), case insensitive
+//    - 'N' positions go in a separate bitmask, appended only when the sequence contains an N
+//    - A sequence without N costs 2 bits per base, 3 bits per base when it contains an N
 //
-// Memory savings example:
-//   - 16bp barcode: 16 bytes string → 6 bytes encoded (71% reduction)
-//   - 50bp sequence: 50 bytes string → 19 bytes encoded (62% reduction)
+// Encoded size = length VLQ + ceil(2n/8) packed bytes + either 1 flag byte (no N)
+//                or a mask size VLQ + ceil(n/8) mask bytes (with N)
+//   - 16bp barcode: 16 bytes string → 6 bytes encoded
+//   - 50bp sequence: 50 bytes string → 15 bytes encoded (22 bytes with at least one N)
 
 #pragma once
 
@@ -129,6 +129,9 @@ public:
          * cases (with/without Ns) transparently.
          *
          * @param data Encoded binary data
+         * Bytes after the mask are ignored, so concatenated frames can be read one at a time.
+         * The length and the mask size are validated against the data before any allocation.
+         *
          * @return std::string Original DNA sequence
          * @throws std::runtime_error on corrupted data
          */
@@ -138,6 +141,9 @@ public:
 
             // Read sequence length
             size_t length = decodeVLQ(data, index);
+
+            if (length > (data.size() - index) * 4)
+                throw std::runtime_error("Corrupt sequence: length exceeds available data");
 
             // 2-bit extraction buffer
             uint64_t bitbuf = 0;
@@ -158,6 +164,9 @@ public:
 
             // Read mask size (0 = no Ns)
             size_t masklen = decodeVLQ(data, index);
+
+            if (masklen != 0 && masklen != (length + 7) / 8)
+                throw std::runtime_error("Corrupt mask: size does not match sequence length");
 
             std::vector<uint8_t> mask;
 
