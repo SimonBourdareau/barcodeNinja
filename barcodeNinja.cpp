@@ -1,4 +1,4 @@
-// BARCODE NINJA v1.8.3
+// BARCODE NINJA v1.8.4
 // Handling combinatorial barcoding in fastq files in a flexible manner.
 // Simon Bourdareau
 // Spetember 2026
@@ -42,6 +42,7 @@
 // version 1.8.1 - 05-12-26 Minor change - This is a fix of v1.8 where the R session is not opened unless statsRDS is toggled.
 // version 1.8.2 - 09-24-26 Minor change - Minor regressions before final release
 // version 1.8.3 - 10-22-26 Minor change - Each read is routed to a single output destination (duplicates take precedence over rejected). New --globalRejected option.
+// version 1.8.4 - 11-19-26 Minor change - Barcodes match regardless of case. Adapter search no longer cuts reads starting with N. Ambiguous lookup tables are an error at start. Deduplication uses 128-bit hashes.
 
 
 // This tells Rcpp to use C++17 features.
@@ -2111,7 +2112,7 @@ void print_help() {
   using namespace Color;
 
   std::cout << "Usage:\n  barcodeNinja [OPTIONS...]\n\n";
-  std::cout << "version 1.8.3 : Handling combinatorial barcoding in fastq files in a flexible manner.\n\n";
+  std::cout << "version 1.8.4 : Handling combinatorial barcoding in fastq files in a flexible manner.\n\n";
 
   std::cout << Modifier::bgBrightBlack << Modifier::white << "=== Input Files ===" << Modifier::reset << "\n";
   std::cout << "  -i, --index1File              " << Modifier::yellow << "<file>   " << Modifier::reset << "     [Optional" << Modifier::reset << "] Path to index1 'something_I1_something.fastq.gz' file\n";
@@ -2183,7 +2184,7 @@ void print_help() {
 }
 
 int main(int argc, char* argv[]) {
-    cxxopts::Options options("barcodeNinja", "version 1.8.3 : Handling combinatorial barcoding in fastq files in a flexible manner.");
+    cxxopts::Options options("barcodeNinja", "version 1.8.4 : Handling combinatorial barcoding in fastq files in a flexible manner.");
     options.add_options()
 
     // Input files
@@ -2248,7 +2249,7 @@ int main(int argc, char* argv[]) {
 
       if (optionsList.count("version"))
       {
-        std::cout << Color::Modifier::blue << "version 1.8.3 - October 2026" << std::endl;
+        std::cout << Color::Modifier::blue << "version 1.8.4 - November 2026" << std::endl;
         std::cout << "Simon Bourdareau - Zeitlinger Lab" << std::endl;
         std::cout << "Stowers Institute for Medical Research" << Color::Modifier::reset << std::endl;
 

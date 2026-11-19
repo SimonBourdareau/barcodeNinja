@@ -565,6 +565,13 @@ The design does not match the actual read structure. Print a few reads (`zcat fi
 
 ---
 
+## Changes in v1.8.4
+
+- **Case is ignored** when matching barcodes and fixed sequences. Lowercase barcodes previously went to `Un` or `*_rejected`.
+- **Adapter trimming** no longer searches for an adapter that starts before the read. A read beginning with 15 or more `N` was cut by 18 bases.
+- **Ambiguous lookup tables are an error at start.** The run stops when two rows give the same sequence under different names, or when barcodes with different names are within 2 x `--bcMaxMismatches` of each other. The message gives the largest safe `--bcMaxMismatches`. Tables above 5000 entries are not checked pairwise. Runs that used to proceed with such tables now stop.
+- **`-D` uses 128-bit hashes** and about 20 to 45 bytes per unique read. Output is unchanged, except that reads containing characters other than ACGTN are now deduplicated.
+
 ## Changes in v1.8.3
 
 - **Each read goes to exactly one output.** With `-d -D -f`, a read that was both a duplicate and rejected was written to a stray untagged `<prefix>.fastq.gz` with R1 and R2 interleaved. Duplicates now take precedence over rejected in every mode.
